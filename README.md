@@ -4,7 +4,7 @@
 
 ## Overview
 
-This is a step-by-step record of building a home network security lab on a Raspberry Pi 4 (2GB), starting from hardware selection through OS setup, Pi-hole DNS filtering deployment, and troubleshooting real hardware/network issues encountered along the way. WireGuard VPN setup is planned as a follow-on phase and is not yet complete.
+This is a step-by-step record of building a home network security lab on a Raspberry Pi 4 (2GB), covering hardware selection, OS setup, Pi-hole DNS filtering deployment, WireGuard VPN configuration for secure remote access, and troubleshooting real hardware/network issues encountered along the way.
 
 ## Hardware
 
@@ -77,6 +77,57 @@ dtoverlay=gpio-fan,gpiopin=14,temp=55000
 ```
 
 > **Note:** This line references GPIO 14 for the fan overlay — see [Troubleshooting](#troubleshooting-log) below regarding a possible interaction between this pin assignment and system stability, identified as an open question during the incident described.
+
+## WireGuard VPN (via PiVPN)
+
+Deployed WireGuard to allow secure remote access to the home network (and Pi-hole DNS filtering) from outside the house.
+
+### Installation
+
+- Installed WireGuard using the PiVPN installer:
+  ```
+  curl -L https://install.pivpn.io | bash
+  ```
+- During setup: selected the existing `pi` user, chose WireGuard as the VPN protocol, kept the default port (51820/UDP), enabled unattended upgrades, and set Pi-hole (the Pi's own local IP) as the DNS server pushed to VPN clients — this is what extends ad-blocking to devices connected over the VPN.
+- Confirmed the router's WAN IP was a genuine public-facing address (not behind carrier-grade NAT) by comparing the router's reported WAN IP against an external IP-lookup site; both matched, confirming port forwarding would work.
+
+### Port Forwarding
+
+Configured the home router to forward external WireGuard traffic to the Pi:
+
+| Setting | Value |
+|---|---|
+| Protocol | UDP |
+| External/Original Port | 51820 |
+| Internal/Forward-to Port | 51820 |
+| Forward-to Address | `<pi-static-ip>` |
+
+### Client Configuration
+
+- Generated a client profile for the laptop:
+  ```
+  pivpn add
+  ```
+- Retrieved the generated config file:
+  ```
+  cat /home/pi/configs/laptop.conf
+  ```
+- Installed the official WireGuard desktop app, created a new tunnel, and pasted in the generated configuration (private key, VPN-internal address, DNS pointing to the Pi, and peer/endpoint details for the home router's public IP).
+- For mobile devices, the same process can be done by scanning a generated QR code instead:
+  ```
+  pivpn -qr
+  ```
+
+### Testing & Verification
+
+Tested from a genuinely external network (a phone's cellular hotspot, ensuring the laptop was not on the home Wi-Fi) to confirm the tunnel worked from outside the house rather than just locally:
+
+- Activated the WireGuard tunnel from the hotspot connection.
+- Confirmed via an external IP-lookup site that the laptop's public-facing IP now matched the home network's public IP, confirming all traffic was routing through the tunnel.
+- Successfully loaded the Pi-hole admin dashboard using the Pi's local network address while still on the hotspot, confirming the laptop was genuinely inside the home network over the VPN.
+- Confirmed the Pi-hole dashboard registered the laptop as an active client and showed live query activity while connected remotely, confirming DNS filtering was extended over the VPN connection.
+
+**Result:** WireGuard is fully functional, providing secure remote access to the home network with Pi-hole DNS filtering active for VPN-connected devices regardless of location.
 
 ## Troubleshooting Log
 
@@ -194,6 +245,6 @@ Dashboard: `http://<pi-static-ip>/admin`
 ## Next Steps
 
 - [ ] Extend Pi-hole DNS filtering network-wide (router-level DNS configuration or per-device rollout)
-- [ ] Deploy WireGuard via PiVPN for secure remote access to the home network and DNS filtering while away from home
+- [ ] Add WireGuard client profiles for additional devices (phone, other household devices) as needed
 - [ ] Confirm the `gpio-fan` overlay is not contributing to boot/network instability; consider testing with the overlay temporarily disabled
 - [ ] Longer-term: build out additional GRC-oriented lab components (asset inventory mapped to CIS Controls, vulnerability management cycle, access control documentation) on the same device
